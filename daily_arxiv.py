@@ -18,8 +18,8 @@ arxiv_url = "http://arxiv.org/"
 
 BASE_URL = "https://arxiv.paperswithcode.com/api/v0/papers/"
 
-KEEP   = "cs.CL"
-BLOCKS = {"cs.CV", "eess.AS", "cs.SD", "eess.SP", "q-bio.BM"}
+KEEP   = {"cs.CL", "cs.SE", "cs.AI", "cs.LG", "cs.NE", "cs.PL"}
+BLOCKS = {"eess.AS", "cs.SD", "eess.SP", "q-bio.BM"}
 
 
 def get_authors(authors, first_author=False):
@@ -29,7 +29,9 @@ def get_authors(authors, first_author=False):
     else:
         output = authors[0]
     return output
-
+def make_collapsible(text: str, title: str = "Full Abstract") -> str:
+    text = text.replace("|", "\\|")      
+    return f"<details><summary>{title}</summary>{text}</details>"
 
 def get_label(categories):
     output = str()
@@ -67,9 +69,9 @@ def get_daily_papers(topic, query, max_results=200):
 
     # 1. arxiv client
     client = arxiv.Client(
-        page_size=100,    
-        delay_seconds=3,  
-        num_retries=5    
+        page_size=20,    
+        delay_seconds=10,  
+        num_retries=10    
     )
 
     search = arxiv.Search(
@@ -82,8 +84,11 @@ def get_daily_papers(topic, query, max_results=200):
     for res in iter_results_safe(client, search):
 
         cats = res.categories                 # e.g. ['cs.CL', 'cs.LG']
-        if (KEEP not in cats) or any(c in cats for c in BLOCKS):
-            continue                        
+        if not any(c in KEEP for c in cats):
+            continue
+        if any(c in cats for c in BLOCKS):
+            continue  
+                           
 
         paper_id_full  = res.get_short_id()  
         paper_id       = paper_id_full.split("v")[0]  
@@ -100,7 +105,7 @@ def get_daily_papers(topic, query, max_results=200):
             if r.get("official"):
                 repo_url = r["official"]["url"]
         except Exception as e:
-            print(f"PwC lookup failed for {paper_id_full}: {e}")
+             pass
 
         md_row = (
             f"|**{update_time}**|**{paper_title}**|{paper_labels}| "
@@ -132,22 +137,38 @@ def wrap_old_row(md_row: str) -> str:
     return "|".join(cells) + newline
 
 def update_json_file(filename, data_all):
-    with open(filename, "r") as f:
-        content = f.read().strip()
-    json_data = json.loads(content) if content else {}
+    # 1. 如果文件存在，读取旧数据
+    if os.path.exists(filename):
+        with open(filename, "r", encoding='utf-8') as f:
+            content = f.read().strip()
+            # 如果文件为空，初始化为 {}
+            json_data = json.loads(content) if content else {}
+    else:
+        # 2. 如果文件不存在，直接初始化为空字典
+        json_data = {}
 
+    # 3. 兼容处理：给旧数据加上折叠格式
     for kw in json_data.values():
         for pid in list(kw.keys()):
             kw[pid] = wrap_old_row(kw[pid])
 
+    # 4. 合并新抓取的数据
     for data in data_all:
         for keyword, papers in data.items():
+            if not papers: continue # 如果没抓到数据跳过
             json_data.setdefault(keyword, {}).update(papers)
 
-    with open(filename, "w") as f:
-        json.dump(json_data, f, indent=2, ensure_ascii=False)
+    # 5. 写入文件（确保目录存在）
+    # 获取目录路径 (docs)
+    directory = os.path.dirname(filename)
+    if directory and not os.path.exists(directory):
+        os.makedirs(directory)
 
-def json_to_md(filename, md_filename,
+    with open(filename, "w", encoding='utf-8') as f:
+        json.dump(json_data, f, indent=2, ensure_ascii=False)
+    
+
+def json_to_md(filename, 
                to_web=False,
                use_title=True,
                use_tc=True,
@@ -158,88 +179,54 @@ def json_to_md(filename, md_filename,
     @return None
     """
 
-    DateNow = dt.date.today()
-    DateNow = str(DateNow)
-    DateNow = DateNow.replace('-', '.')
+    DateNow = str(dt.date.today()).replace('-', '.')
 
-    with open(filename, "r") as f:
-        content = f.read()
-        if not content:
-            data = {}
-        else:
-            data = json.loads(content)
+    with open(filename, "r", encoding='utf-8') as f:
+        data = json.loads(f.read())
 
-    # clean README.md if daily already exist else create it
-    with open(md_filename, "w+") as f:
-        pass
+    # 1. 为每个 Topic 生成单独的 MD 文件
+    generated_files = []
+    for topic, papers in data.items():
+        if not papers: continue
+        
+        # 文件名：Code Generation.md
+        topic_filename = f"{topic}.md"
+        generated_files.append(topic_filename)
 
-    # write data into README.md
-    with open(md_filename, "a+") as f:
+        with open(topic_filename, "w+", encoding='utf-8') as f:
+            f.write(f"# {topic}\n\n")
+            f.write(f"> Updated on {DateNow}\n\n")
+            f.write(f"[🔙 Back to Index](README.md)\n\n") # 返回主页的链接
+            
+            f.write("| Date | Title | Categories | Abstract | PDF | Code |\n")
+            f.write("|:---|:---|:---|:---|:---|:---|\n")
 
-        if (use_title == True) and (to_web == True):
-            f.write("---\n" + "layout: default\n" + "---\n\n")
-
-        if show_badge == True:
-            f.write(f"[![Contributors][contributors-shield]][contributors-url]\n")
-            f.write(f"[![Forks][forks-shield]][forks-url]\n")
-            f.write(f"[![Stargazers][stars-shield]][stars-url]\n")
-            f.write(f"[![Issues][issues-shield]][issues-url]\n\n")
-
-        # add another code repository link
-        f.write("For more carefully curated articles, you can refer to this [repository](https://github.com/bansky-cl/Diffusion_NLP_Papers).\n\n")
-
-        if use_title == True:
-            f.write("## Updated on " + DateNow + "\n\n")
-        else:
-            f.write("> Updated on " + DateNow + "\n\n")
-
-        f.write("![Monthly Trend](imgs/trend.png)\n\n")
-
-        for keyword in data.keys():
-            day_content = data[keyword]
-            if not day_content:
-                continue
-            # the head of each part
-            f.write(f"## {keyword}\n\n")
-
-            if use_title == True:
-                if to_web == False:
-                    f.write("|Date|Title|label|Abstract|PDF|Code|\n" + "|---|---|---|---|---|---|\n")
-                else:
-                    f.write("| Date | Title | label | Abstract | PDF | Code |\n")
-                    f.write("|:---------|:---------------|:-------|:------------------|:------|:------|\n")
-
-            # sort papers by date
-            day_content = sort_papers(day_content)
-
-            for _, v in day_content.items():
-                if not v:       
-                    continue
+            sorted_papers = sort_papers(papers)
+            for _, v in sorted_papers.items():
                 f.write(v.rstrip("\n") + "\n")
+            
+            f.write(f"\n<p align=right>(<a href='#{topic.lower().replace(' ', '-')}'>back to top</a>)</p>\n")
+        
+        
 
-            f.write(f"\n")
+    # 2. 生成主 README.md (作为索引)
+    with open("README.md", "w+", encoding='utf-8') as f:
+        f.write(f"# Daily ArXiv Papers\n\n")
+        f.write(f"> Last Updated: {DateNow}\n\n")
+        
+        # 显示趋势图
+        if os.path.exists("imgs/trend.png"):
+            f.write("![Monthly Trend](imgs/trend.png)\n\n")
 
-            # Add: back to top
-            top_info = f"#Updated on {DateNow}"
-            top_info = top_info.replace(' ', '-').replace('.', '')
-            f.write(f"<p align=right>(<a href={top_info}>back to top</a>)</p>\n\n")
-
-        if show_badge == True:
-            # unk
-            f.write(
-                f"[contributors-shield]: https://img.shields.io/github/contributors/bansky-cl/diffusion-nlp-paper-arxiv.svg?style=for-the-badge\n")
-            f.write(f"[contributors-url]: https://github.com/bansky-cl/diffusion-nlp-paper-arxiv/graphs/contributors\n")
-            f.write(
-                f"[forks-shield]: https://img.shields.io/github/forks/bansky-cl/diffusion-nlp-paper-arxiv.svg?style=for-the-badge\n")
-            f.write(f"[forks-url]: https://github.com/bansky-cl/diffusion-nlp-paper-arxiv/network/members\n")
-            f.write(
-                f"[stars-shield]: https://img.shields.io/github/stars/bansky-cl/diffusion-nlp-paper-arxiv.svg?style=for-the-badge\n")
-            f.write(f"[stars-url]: https://github.com/bansky-cl/diffusion-nlp-paper-arxiv/stargazers\n")
-            f.write(
-                f"[issues-shield]: https://img.shields.io/github/issues/bansky-cl/diffusion-nlp-paper-arxiv.svg?style=for-the-badge\n")
-            f.write(f"[issues-url]: https://github.com/bansky-cl/diffusion-nlp-paper-arxiv/issues\n\n")
-
-    print("finished")
+        f.write("## Topic List\n\n")
+        f.write("Click to view papers:\n\n")
+        
+        # 写入目录链接
+        for topic in data.keys():
+            # 这里必须确保文件名和上面生成的一致
+            f.write(f"- [**{topic}**]({topic}.md)\n")
+    
+    
 
 def json_to_trend(json_file: str | Path, img_file: str | Path) -> None:
     json_file = Path(json_file).expanduser().resolve()
@@ -309,24 +296,32 @@ def json_to_trend(json_file: str | Path, img_file: str | Path) -> None:
 
 if __name__ == "__main__":
 
+    os.makedirs("docs", exist_ok=True)
+    os.makedirs("imgs", exist_ok=True)
+
     data_collector = []
 
     # my keyword
     keywords = dict()
-    keywords["diffusion"] = "ti:\"diffusion\""  + "OR" + "ti:\" diffus\""
-
+    
+    # keywords["GUI_Testing"] = 'all:"GUI testing" OR (all:"GUI" AND all:"testing")'
+    # keywords["MA-LLM"] = '(all:"multi-agent" AND all:"LLM") OR all:"Multi-Agent"'
+    keywords["MA-CoEvo"] = '(all:"co-evolution" OR all:"co-evolving" OR all:"collaborative evolution") AND (all:"agent" OR all:"multi-agent" OR all:"dual-agent" OR all:"LLM")'
+    keywords["MA-CoEvo-RL"] = '(abs:"co-evolution" OR abs:"co-evolving") AND (abs:"multi-agent" OR abs:"dual-agent") AND (abs:"reinforcement learning" OR abs:"RL" OR abs:"PPO")'
+    keywords["CodeGeneration_LLM"] = '(all:"code generation" OR all:"program synthesis" OR all:"text-to-code") AND (all:"LLM" OR all:"Large Language Model")'
+    keywords["GUI_LLM_RL_MA"] = '(abs:"GUI testing" OR abs:"Android testing" OR abs:"mobile app testing") AND (abs:"LLM" OR abs:"Large Language Model" OR abs:"Agent") AND (abs:"reinforcement learning" OR abs:"multi-agent" OR abs:"co-evolution" OR abs:"evolutionary")'
     for topic, keyword in keywords.items():
         print("Keyword: " + topic)
 
-        data = get_daily_papers(topic, query=keyword, max_results=200)
+        data = get_daily_papers(topic, query=keyword, max_results=50)
         data_collector.append(data)
 
         print("\n")
 
     json_file = "docs/arxiv-daily.json"
-    img_file = "imgs/trend.png"
-    md_file = "README.md"
+    # img_file = "imgs/trend.png"
+    
 
     update_json_file(json_file, data_collector)
-    json_to_trend(json_file, img_file)
-    json_to_md(json_file, md_file)
+    # json_to_trend(json_file, img_file)
+    json_to_md(json_file)
