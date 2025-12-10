@@ -327,9 +327,9 @@ if __name__ == "__main__":
         print("\n")
 
     json_file = "docs/arxiv-daily.json"
-    # img_file = "imgs/trend.png"
+    img_file = "imgs/trend.png"
     
 
     update_json_file(json_file, data_collector)
-    # json_to_trend(json_file, img_file)
+    json_to_trend(json_file, img_file)
     json_to_md(json_file)
