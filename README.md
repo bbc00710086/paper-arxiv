@@ -1,6 +1,6 @@
 # Daily ArXiv Papers
 
-> Last Updated: 2025.12.09
+> Last Updated: 2025.12.10
 
 ![Monthly Trend](imgs/trend.png)
 
