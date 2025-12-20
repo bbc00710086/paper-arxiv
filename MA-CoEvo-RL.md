@@ -1,6 +1,6 @@
 # MA-CoEvo-RL
 
-> Updated on 2025.12.19
+> Updated on 2025.12.20
 
 [🔙 Back to Index](README.md)
 
