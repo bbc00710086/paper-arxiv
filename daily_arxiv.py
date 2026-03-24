@@ -24,6 +24,68 @@ BASE_URL = "https://arxiv.paperswithcode.com/api/v0/papers/"
 
 KEEP   = {"cs.CL", "cs.SE", "cs.AI", "cs.LG", "cs.NE", "cs.PL"}
 BLOCKS = {"eess.AS", "cs.SD", "eess.SP", "q-bio.BM"}
+LATENT_REASONING_TITLE_PATTERNS = [
+    "latent reasoning",
+    "latent chain-of-thought",
+    "continuous chain-of-thought",
+    "continuous cot",
+    "continuous thought",
+    "soft chain-of-thought",
+    "soft thinking",
+    "latent planning",
+    "latent thought",
+    "thinking in latents",
+    "pause-of-thought",
+    "implicit tokens",
+    "text-latent",
+]
+LATENT_REASONING_CLEAN_KEEP_PATTERNS = [
+    "latent reasoning",
+    "latent chain-of-thought",
+    "continuous chain-of-thought",
+    "continuous cot",
+    "continuous thought",
+    "chain-of-continuous-thought",
+    "soft chain-of-thought",
+    "soft thinking",
+    "latent planning",
+    "latent thought",
+    "thinking in latents",
+    "pause-of-thought",
+    "implicit tokens",
+    "text-latent",
+    "spiralthinker",
+    "semcot",
+    "render-of-thought",
+    "do latent tokens think",
+    "dynamic large concept models",
+    "latent cognition latent planning",
+    "verbalizable latent planning",
+]
+LATENT_REASONING_DROP_PATTERNS = [
+    "brainwaves",
+    "eeg",
+    "retrieval",
+    "debiasing",
+    "alignment",
+    "active learning",
+    "poisoning attacks",
+    "public opinion",
+    "knowledge graph",
+    "word recovery",
+    "attention residuals",
+    "adaptive query routing",
+    "early exit",
+    "overthinking mitigation",
+    "native retrieval embeddings",
+    "distillation framework",
+    "medical consultation",
+    "radiology",
+    "biomedical",
+    "shared-account sequential recommendation",
+    "re-ranking",
+    "gui",
+]
 # ===========================================
 
 def get_authors(authors, first_author=False):
@@ -61,6 +123,9 @@ def iter_results_safe(client, search):
             yield next(gen)
         except UnexpectedEmptyPageError as e:
             print(f"[arXiv] empty page, stop paging: {e}")
+            break
+        except requests.exceptions.RequestException as e:
+            print(f"[arXiv] request error, stop paging: {e}")
             break
         except StopIteration:
             break
@@ -101,6 +166,11 @@ def get_daily_papers(topic, query, max_results=200):
         collapsed_abs = make_collapsible(paper_abstract)      
         paper_labels   = ", ".join(cats)
 
+        if topic == "Latent_Reasoning":
+            title_lower = paper_title.lower()
+            if not any(pattern in title_lower for pattern in LATENT_REASONING_TITLE_PATTERNS):
+                continue
+
         repo_url = "null"
         try:
             r = requests.get(BASE_URL + paper_id_full, timeout=10).json()
@@ -130,6 +200,28 @@ def wrap_old_row(md_row: str) -> str:
     cells[4] = make_collapsible(cells[4].strip())
     return "|".join(cells) + newline
 
+def extract_title_from_row(md_row: str) -> str:
+    match = re.search(r"\|\*\*\d{4}-\d{2}-\d{2}\*\*\|\*\*(.*?)\*\*\|", md_row)
+    return match.group(1) if match else ""
+
+def clean_latent_reasoning_papers(papers: dict[str, str]) -> dict[str, str]:
+    cleaned = {}
+    for pid, row in papers.items():
+        title = extract_title_from_row(row)
+        title_lower = title.lower()
+
+        if any(pattern in title_lower for pattern in LATENT_REASONING_CLEAN_KEEP_PATTERNS):
+            cleaned[pid] = row
+            continue
+
+        if any(pattern in title_lower for pattern in LATENT_REASONING_DROP_PATTERNS):
+            continue
+
+        if "latent" in title_lower and any(token in title_lower for token in ["reasoning", "thought", "planning", "cot"]):
+            cleaned[pid] = row
+
+    return cleaned
+
 def update_json_file(filename, data_all):
     if os.path.exists(filename):
         with open(filename, "r", encoding='utf-8') as f:
@@ -146,6 +238,9 @@ def update_json_file(filename, data_all):
         for keyword, papers in data.items():
             if not papers: continue
             json_data.setdefault(keyword, {}).update(papers)
+
+    if "Latent_Reasoning" in json_data:
+        json_data["Latent_Reasoning"] = clean_latent_reasoning_papers(json_data["Latent_Reasoning"])
 
     directory = os.path.dirname(filename)
     if directory and not os.path.exists(directory):
@@ -328,14 +423,28 @@ if __name__ == "__main__":
     keywords["MA-CoEvo-RL"] = '(abs:"co-evolution" OR abs:"co-evolving") AND (abs:"multi-agent" OR abs:"dual-agent") AND (abs:"reinforcement learning" OR abs:"RL" OR abs:"PPO")'
     keywords["CodeGeneration_LLM"] = '(all:"code generation" OR awll:"program synthesis" OR all:"text-to-code") AND (all:"LLM" OR all:"Large Language Model")'
     keywords["GUI_LLM_RL_MA"] = '(abs:"GUI testing" OR abs:"Android testing" OR abs:"mobile app testing") AND (abs:"LLM" OR abs:"Large Language Model" OR abs:"Agent") AND (abs:"reinforcement learning" OR abs:"multi-agent" OR abs:"co-evolution" OR abs:"evolutionary")'
-    keywords["Latent_Reasoning"] = '(all:"latent reasoning" OR all:"implicit reasoning" OR all:"hidden reasoning") AND (all:"LLM" OR all:"large language model" OR all:"reasoning model")'  
+    keywords["Latent_Reasoning"] = [
+        '(ti:"latent reasoning" OR abs:"latent reasoning")',
+        '(ti:"latent chain-of-thought" OR abs:"latent chain-of-thought")',
+        '(ti:"continuous chain-of-thought" OR abs:"continuous chain-of-thought" OR ti:"continuous thought" OR abs:"continuous thought")',
+        '(ti:"soft chain-of-thought" OR abs:"soft chain-of-thought" OR ti:"soft thinking" OR abs:"soft thinking")',
+        '(ti:"latent planning" OR abs:"latent planning")'
+    ]
+
     # ===============================================
 
     for topic, keyword in keywords.items():
         print("Keyword: " + topic)
         # 获取数据
-        data = get_daily_papers(topic, query=keyword, max_results=50)
-        data_collector.append(data)
+        topic_papers = {}
+        query_list = keyword if isinstance(keyword, list) else [keyword]
+        per_query_max_results = 30 if isinstance(keyword, list) else 50
+
+        for query in query_list:
+            data = get_daily_papers(topic, query=query, max_results=per_query_max_results)
+            topic_papers.update(data.get(topic, {}))
+
+        data_collector.append({topic: topic_papers})
         print("\n")
 
     json_file = "docs/arxiv-daily.json"
