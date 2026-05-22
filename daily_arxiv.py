@@ -430,6 +430,7 @@ if __name__ == "__main__":
         '(ti:"soft chain-of-thought" OR abs:"soft chain-of-thought" OR ti:"soft thinking" OR abs:"soft thinking")',
         '(ti:"latent planning" OR abs:"latent planning")'
     ]
+    keywords["Agent-Exploration"] = '(all:"agent exploration" OR all:"exploratory agent" OR all:"curiosity-driven exploration" OR all:"intrinsic motivation" OR all:"agentic policy optimization") AND (all:"LLM" OR all:"Large Language Model" OR all:"reinforcement learning" OR all:"MCTS")'
 
     # ===============================================
 
