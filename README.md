@@ -1,6 +1,6 @@
 # Daily ArXiv Papers
 
-> Last Updated: 2026.05.21
+> Last Updated: 2026.05.22
 
 This project provides daily updates on ArXiv papers regarding Multi-Agent LLMs, GUI Testing, and Code Generation. It builds upon the work of @bansky-cl, with refinements by @bbc00710086, and is currently deployed and maintained by zzz.
 
@@ -34,5 +34,11 @@ This project provides daily updates on ArXiv papers regarding Multi-Agent LLMs, 
 ![Latent_Reasoning Trend](imgs/trend_Latent_Reasoning.png)
 
 👉 [**View Paper List for Latent_Reasoning**](Latent_Reasoning.md)
+
+---
+### Agent-Exploration
+![Agent-Exploration Trend](imgs/trend_Agent-Exploration.png)
+
+👉 [**View Paper List for Agent-Exploration**](Agent-Exploration.md)
 
 ---
