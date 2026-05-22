@@ -7,54 +7,52 @@ on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
   schedule:
-    # - cron:  "* 0/12 * * *"  #'*/60 * * * *'
+    # 每天 UTC 时间 08:00 和 22:00 运行 (北京时间 16:00 和 次日 06:00)
     - cron: '0 8,22 * * *'
-  # Triggers the workflow on push or pull request events but only for the main branch
-#   push:
-#     branches:
-#     - main
 
 env:
-
   GITHUB_USER_NAME: bansky-cl
   GITHUB_USER_EMAIL: cxy1365@163.com
-  
-  
-# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+
 jobs:
-  # This workflow contains a single job called "build"
   build:
     name: update
-    # The type of runner that the job will run on
     runs-on: ubuntu-latest
     
-    # Steps represent a sequence of tasks that will be executed as part of the job
+    # 【必须添加】显式赋予 Action 提交代码的权限
+    permissions:
+      contents: write
+    
     steps:
       - name: Checkout
         uses: actions/checkout@v3
         
       - name: Set up Python Env
-        uses: actions/setup-python@v1
+        uses: actions/setup-python@v4 # 升级到 v4 更稳定
         with:
           python-version: '3.10'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install arxiv
-          pip install requests
-          pip install matplotlib
+          pip install arxiv requests matplotlib
           
       - name: Run daily arxiv 
         run: |
+          # 确保脚本名称与你仓库里的文件名一致
           python daily_arxiv.py
           
-      - name: Push new nlp-arxiv-daily.md
+      - name: Check files (Debug)
+        run: |
+          ls -R # 查看生成的文件夹和文件，确认路径正确
+          
+      - name: Push updates
         uses: github-actions-x/commit@v2.9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "Github Action Automatic Update Diffusion NLP Arxiv Papers"
-          files: README.md docs/arxiv-daily.json imgs/trend.png
+          commit-message: "Github Action Automatic Update Arxiv Papers"
+          # 【关键修改】使用通配符匹配所有生成的图片和各个 Topic 的 MD 文件
+          files: README.md docs/arxiv-daily.json imgs/*.png *.md
           rebase: 'true'
           name: ${{ env.GITHUB_USER_NAME }}
           email: ${{ env.GITHUB_USER_EMAIL }}
