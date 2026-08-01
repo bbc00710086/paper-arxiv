@@ -1,6 +1,6 @@
 # GUI_LLM_RL_MA
 
-> Updated on 2026.07.31
+> Updated on 2026.08.01
 
 [🔙 Back to Index](README.md)
 
