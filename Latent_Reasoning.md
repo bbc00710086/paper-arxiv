@@ -1,6 +1,6 @@
 # Latent_Reasoning
 
-> Updated on 2026.10.11
+> Updated on 2026.10.12
 
 [🔙 Back to Index](README.md)
 
